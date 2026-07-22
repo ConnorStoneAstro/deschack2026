@@ -9,13 +9,8 @@ import corner
 from scipy.optimize import minimize
 import numpy as np
 
-# Initialize objects
-z_max = 2.0
-cosmology = cg.Cosmology()
-cosmology.Omega_m = 0.3
-rateIa = cg.rates.RateConst(cosmology, r=1e-4, z_min=0.0, z_max=z_max, name="rateIa")
-
 # Define sampling setup
+# --------------------------------------------------------------------
 Nsamp = 500
 M_mean = -19.3
 M_std = 0.1
@@ -23,7 +18,15 @@ m_threshold = -4
 m_std = 0.1
 z_std = 0.05
 
+# Initialize objects
+# --------------------------------------------------------------------
+z_max = 2.0
+cosmology = cg.Cosmology()
+cosmology.Omega_m = 0.3
+rateIa = cg.rates.RateConst(cosmology, r=1e-4, z_min=0.0, z_max=z_max, name="rateIa")
+
 # Choose which dataset is used for cosmology fitting: "observed" or "detected".
+# --------------------------------------------------------------------
 FIT_DATA_MODE = "observed"
 assert FIT_DATA_MODE in [
     "observed",
@@ -31,6 +34,7 @@ assert FIT_DATA_MODE in [
 ], "FIT_DATA_MODE must be either 'observed' or 'detected'."
 
 # Sample redshifts
+# --------------------------------------------------------------------
 key = jax.random.PRNGKey(42)
 key, subkey = jax.random.split(key)
 z_true = rateIa.sample_z(subkey, Nsamp)
@@ -44,6 +48,7 @@ plt.savefig(f"true_redshift_histogram_fit-{FIT_DATA_MODE}.png")
 plt.close()
 
 # Compute distance modulus
+# --------------------------------------------------------------------
 DL = jax.jit(jax.vmap(cosmology.luminosity_distance))(z_true)
 mu_true = 5 * jnp.log10(DL) - 5
 
@@ -55,10 +60,12 @@ plt.savefig(f"true_distance_modulus_scatter_fit-{FIT_DATA_MODE}.png")
 plt.close()
 
 # Sample absolute magnitudes
+# --------------------------------------------------------------------
 key, subkey = jax.random.split(key)
 M_true = jax.random.normal(subkey, shape=(Nsamp,)) * M_std + M_mean
 
 # Compute apparent magnitudes
+# --------------------------------------------------------------------
 m_true = mu_true + M_true
 
 plt.scatter(z_true, m_true, s=5)
@@ -71,10 +78,12 @@ plt.savefig(f"true_apparent_magnitude_scatter_fit-{FIT_DATA_MODE}.png")
 plt.close()
 
 # Generate observed values with noise
+# --------------------------------------------------------------------
 z_obs = z_true + jax.random.normal(key, shape=(Nsamp,)) * z_std
 m_obs = m_true + jax.random.normal(key, shape=(Nsamp,)) * m_std
 
 # Plot observed values
+# --------------------------------------------------------------------
 plt.scatter(z_obs, m_obs, s=5, color="orange")
 plt.xlabel("Redshift")
 plt.ylabel("Apparent Magnitude")
@@ -84,6 +93,7 @@ plt.savefig(f"observed_apparent_magnitude_scatter_fit-{FIT_DATA_MODE}.png")
 plt.close()
 
 # Apply detection threshold
+# --------------------------------------------------------------------
 detect = m_obs < m_threshold
 z_det = z_obs[detect]
 m_det = m_obs[detect]
@@ -109,6 +119,7 @@ else:
 
 
 # Run a fit, without accounting for selection effects
+# --------------------------------------------------------------------
 class NaiveLikelihood(ck.Module):
     def __init__(self, z_obs, m_obs, z_std, m_std, cosmology: cg.Cosmology):
         super().__init__()
@@ -138,7 +149,9 @@ class NaiveLikelihood(ck.Module):
         return -self.log_likelihood()
 
 
-# Scipy optimization to find the best-fit parameters
+# Setup naive likelihood and map out the log-likelihood surface
+#####################################################################
+
 opt_cosmology = cg.Cosmology()
 opt_cosmology.Omega_m.to_dynamic()
 opt_cosmology.w0.to_dynamic()
@@ -165,6 +178,13 @@ plt.savefig(f"naive_ll_heatmap_fit-{FIT_DATA_MODE}.png")
 plt.close()
 
 
+# MCMC sampling with emcee and posterior corner plot
+# --------------------------------------------------------------------
+true_params_plot = np.array(NLL.get_values())
+omega_bounds = (0.01, 1.0)
+w0_bounds = (-2.0, 0.0)
+
+
 def make_sigma_ellipse(mean, cov, chi2_value=2.30, **kwargs):
     eigvals, eigvecs = np.linalg.eigh(cov)
     order = np.argsort(eigvals)[::-1]
@@ -176,14 +196,6 @@ def make_sigma_ellipse(mean, cov, chi2_value=2.30, **kwargs):
     angle = np.degrees(np.arctan2(eigvecs[1, 0], eigvecs[0, 0]))
 
     return Ellipse(xy=mean, width=width, height=height, angle=angle, **kwargs)
-
-
-true_params_plot = np.array(NLL.get_values())
-
-
-# MCMC sampling with emcee and posterior corner plot
-omega_bounds = (0.01, 1.0)
-w0_bounds = (-2.0, 0.0)
 
 
 batched_log_likelihood = jax.jit(jax.vmap(NLL.log_likelihood))
@@ -210,6 +222,7 @@ nburn = 500
 thin = 1
 
 # Start walkers at the true cosmology; tiny jitter avoids a singular initial ensemble.
+# --------------------------------------------------------------------
 p0 = np.tile(true_params_plot, (nwalkers, 1)) + 1e-12 * np.random.standard_normal((nwalkers, ndim))
 p0[:, 0] = np.clip(p0[:, 0], omega_bounds[0] + 1e-5, omega_bounds[1] - 1e-5)
 p0[:, 1] = np.clip(p0[:, 1], w0_bounds[0] + 1e-5, w0_bounds[1] - 1e-5)
@@ -229,3 +242,6 @@ fig = corner.corner(
 fig.suptitle(f"Cosmology Posterior Corner Plot ({fit_data_label} Fit Data)", y=1.02)
 fig.savefig(f"cosmology_corner_plot_fit-{FIT_DATA_MODE}.png", bbox_inches="tight")
 plt.close(fig)
+
+# Setup proper normalized likelihood
+#####################################################################
