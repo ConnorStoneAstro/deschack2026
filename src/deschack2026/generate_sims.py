@@ -24,7 +24,11 @@ m_std = 0.1
 z_std = 0.05
 
 # Choose which dataset is used for cosmology fitting: "observed" or "detected".
-FIT_DATA_MODE = "detected"
+FIT_DATA_MODE = "observed"
+assert FIT_DATA_MODE in [
+    "observed",
+    "detected",
+], "FIT_DATA_MODE must be either 'observed' or 'detected'."
 
 # Sample redshifts
 key = jax.random.PRNGKey(42)
