@@ -1,3 +1,7 @@
+# Setting this up as a separate file to really drive home what parts are
+# simulated data generation (generate_sims.py script), and what parts are the
+# fiducial simulation and fitting (fit_sim_data.py).
+
 import jax
 import jax.numpy as jnp
 import cosmographi as cg
