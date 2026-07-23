@@ -54,32 +54,33 @@ class NaiveLikelihood(ck.Module):
         return -self.log_likelihood()
 
 
-def main(FIT_DATA_MODE):
+def main(FIT_DATA_MODE, key=jax.random.PRNGKey(42), just_generate=False):
     # Sample redshifts
     # --------------------------------------------------------------------
-    key = jax.random.PRNGKey(42)
     key, subkey = jax.random.split(key)
     z_true = rateIa.sample_z(subkey, Nsamp)
 
-    hist, bins = jnp.histogram(z_true, bins=30, range=(0.0, z_max))
-    plt.bar(bins[:-1], hist, width=bins[1] - bins[0], align="edge")
-    plt.xlabel("True Redshift")
-    plt.ylabel("Count")
-    plt.title("True Redshift Histogram")
-    plt.savefig(f"true_redshift_histogram.png")
-    plt.close()
+    if not just_generate:
+        hist, bins = jnp.histogram(z_true, bins=30, range=(0.0, z_max))
+        plt.bar(bins[:-1], hist, width=bins[1] - bins[0], align="edge")
+        plt.xlabel("True Redshift")
+        plt.ylabel("Count")
+        plt.title("True Redshift Histogram")
+        plt.savefig(f"true_redshift_histogram.png")
+        plt.close()
 
     # Compute distance modulus
     # --------------------------------------------------------------------
     DL = jax.jit(jax.vmap(cosmology.luminosity_distance))(z_true)
     mu_true = 5 * jnp.log10(DL) - 5
 
-    plt.scatter(z_true, mu_true, s=5)
-    plt.xlabel("True Redshift")
-    plt.ylabel("True Distance Modulus")
-    plt.title("True Distance Modulus vs Redshift")
-    plt.savefig(f"true_distance_modulus_scatter.png")
-    plt.close()
+    if not just_generate:
+        plt.scatter(z_true, mu_true, s=5)
+        plt.xlabel("True Redshift")
+        plt.ylabel("True Distance Modulus")
+        plt.title("True Distance Modulus vs Redshift")
+        plt.savefig(f"true_distance_modulus_scatter.png")
+        plt.close()
 
     # Sample absolute magnitudes
     # --------------------------------------------------------------------
@@ -90,14 +91,15 @@ def main(FIT_DATA_MODE):
     # --------------------------------------------------------------------
     m_true = mu_true + M_true
 
-    plt.scatter(z_true, m_true, s=5)
-    plt.xlabel("True Redshift")
-    plt.ylabel("True Apparent Magnitude")
-    # plt.gca().invert_yaxis()  # Invert y-axis for magnitudes
-    plt.grid()
-    plt.title("True Apparent Magnitude vs Redshift")
-    plt.savefig(f"true_apparent_magnitude_scatter.png")
-    plt.close()
+    if not just_generate:
+        plt.scatter(z_true, m_true, s=5)
+        plt.xlabel("True Redshift")
+        plt.ylabel("True Apparent Magnitude")
+        # plt.gca().invert_yaxis()  # Invert y-axis for magnitudes
+        plt.grid()
+        plt.title("True Apparent Magnitude vs Redshift")
+        plt.savefig(f"true_apparent_magnitude_scatter.png")
+        plt.close()
 
     # Generate noised values with noise
     # --------------------------------------------------------------------
@@ -106,13 +108,14 @@ def main(FIT_DATA_MODE):
 
     # Plot noised values
     # --------------------------------------------------------------------
-    plt.scatter(z_noise, m_noise, s=5, color="orange")
-    plt.xlabel("Noised Redshift")
-    plt.ylabel("Noised Apparent Magnitude")
-    plt.grid()
-    plt.title("Noised Apparent Magnitude vs Redshift")
-    plt.savefig(f"noised_apparent_magnitude_scatter.png")
-    plt.close()
+    if not just_generate:
+        plt.scatter(z_noise, m_noise, s=5, color="orange")
+        plt.xlabel("Noised Redshift")
+        plt.ylabel("Noised Apparent Magnitude")
+        plt.grid()
+        plt.title("Noised Apparent Magnitude vs Redshift")
+        plt.savefig(f"noised_apparent_magnitude_scatter.png")
+        plt.close()
 
     # Apply detection threshold
     # --------------------------------------------------------------------
@@ -120,13 +123,14 @@ def main(FIT_DATA_MODE):
     z_sel = z_noise[select]
     m_sel = m_noise[select]
 
-    plt.scatter(z_sel, m_sel, s=5, color="green")
-    plt.xlabel("Selected Redshift")
-    plt.ylabel("Selected Noisy Apparent Magnitude")
-    plt.grid()
-    plt.title("Selected Noisy Apparent Magnitude vs Redshift")
-    plt.savefig(f"selected_noisy_apparent_magnitude_scatter.png")
-    plt.close()
+    if not just_generate:
+        plt.scatter(z_sel, m_sel, s=5, color="green")
+        plt.xlabel("Selected Redshift")
+        plt.ylabel("Selected Noisy Apparent Magnitude")
+        plt.grid()
+        plt.title("Selected Noisy Apparent Magnitude vs Redshift")
+        plt.savefig(f"selected_noisy_apparent_magnitude_scatter.png")
+        plt.close()
 
     # Save dataset to be fit in another script
     # --------------------------------------------------------------------
@@ -137,6 +141,8 @@ def main(FIT_DATA_MODE):
         z_std=np.array(z_std),
         m_std=np.array(m_std),
     )
+    if just_generate:
+        return
 
     # Run a fit, without accounting for selection effects
     # --------------------------------------------------------------------
