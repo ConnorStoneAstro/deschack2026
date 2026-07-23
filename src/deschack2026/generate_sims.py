@@ -25,13 +25,13 @@ cosmology = cg.Cosmology()
 cosmology.Omega_m = 0.3
 rateIa = cg.rates.RateConst(cosmology, r=1e-4, z_min=0.0, z_max=z_max, name="rateIa")
 
-# Choose which dataset is used for cosmology fitting: "observed" or "detected".
+# Choose which dataset is used for cosmology fitting: "noised" or "selected".
 # --------------------------------------------------------------------
-FIT_DATA_MODE = "observed"
+FIT_DATA_MODE = "selected"
 assert FIT_DATA_MODE in [
-    "observed",
-    "detected",
-], "FIT_DATA_MODE must be either 'observed' or 'detected'."
+    "noised",
+    "selected",
+], "FIT_DATA_MODE must be either 'noised' or 'selected'."
 
 # Sample redshifts
 # --------------------------------------------------------------------
@@ -44,7 +44,7 @@ plt.bar(bins[:-1], hist, width=bins[1] - bins[0], align="edge")
 plt.xlabel("True Redshift")
 plt.ylabel("Count")
 plt.title("True Redshift Histogram")
-plt.savefig(f"true_redshift_histogram_fit-{FIT_DATA_MODE}.png")
+plt.savefig(f"true_redshift_histogram.png")
 plt.close()
 
 # Compute distance modulus
@@ -56,7 +56,7 @@ plt.scatter(z_true, mu_true, s=5)
 plt.xlabel("True Redshift")
 plt.ylabel("True Distance Modulus")
 plt.title("True Distance Modulus vs Redshift")
-plt.savefig(f"true_distance_modulus_scatter_fit-{FIT_DATA_MODE}.png")
+plt.savefig(f"true_distance_modulus_scatter.png")
 plt.close()
 
 # Sample absolute magnitudes
@@ -74,48 +74,48 @@ plt.ylabel("True Apparent Magnitude")
 # plt.gca().invert_yaxis()  # Invert y-axis for magnitudes
 plt.grid()
 plt.title("True Apparent Magnitude vs Redshift")
-plt.savefig(f"true_apparent_magnitude_scatter_fit-{FIT_DATA_MODE}.png")
+plt.savefig(f"true_apparent_magnitude_scatter.png")
 plt.close()
 
-# Generate observed values with noise
+# Generate noised values with noise
 # --------------------------------------------------------------------
-z_obs = z_true + jax.random.normal(key, shape=(Nsamp,)) * z_std
-m_obs = m_true + jax.random.normal(key, shape=(Nsamp,)) * m_std
+z_noise = z_true + jax.random.normal(key, shape=(Nsamp,)) * z_std
+m_noise = m_true + jax.random.normal(key, shape=(Nsamp,)) * m_std
 
-# Plot observed values
+# Plot noised values
 # --------------------------------------------------------------------
-plt.scatter(z_obs, m_obs, s=5, color="orange")
-plt.xlabel("Redshift")
-plt.ylabel("Apparent Magnitude")
+plt.scatter(z_noise, m_noise, s=5, color="orange")
+plt.xlabel("Noised Redshift")
+plt.ylabel("Noised Apparent Magnitude")
 plt.grid()
-plt.title("Observed Apparent Magnitude vs Redshift")
-plt.savefig(f"observed_apparent_magnitude_scatter_fit-{FIT_DATA_MODE}.png")
+plt.title("Noised Apparent Magnitude vs Redshift")
+plt.savefig(f"noised_apparent_magnitude_scatter.png")
 plt.close()
 
 # Apply detection threshold
 # --------------------------------------------------------------------
-detect = m_obs < m_threshold
-z_det = z_obs[detect]
-m_det = m_obs[detect]
+select = m_noise < m_threshold
+z_sel = z_noise[select]
+m_sel = m_noise[select]
 
-plt.scatter(z_det, m_det, s=5, color="green")
-plt.xlabel("Detected Redshift")
-plt.ylabel("Detected Apparent Magnitude")
+plt.scatter(z_sel, m_sel, s=5, color="green")
+plt.xlabel("Selected Redshift")
+plt.ylabel("Selected Noisy Apparent Magnitude")
 plt.grid()
-plt.title("Detected Apparent Magnitude vs Redshift")
-plt.savefig(f"detected_apparent_magnitude_scatter_fit-{FIT_DATA_MODE}.png")
+plt.title("Selected Noisy Apparent Magnitude vs Redshift")
+plt.savefig(f"selected_noisy_apparent_magnitude_scatter.png")
 plt.close()
 
-if FIT_DATA_MODE == "observed":
-    z_fit = z_obs
-    m_fit = m_obs
-    fit_data_label = "Observed"
-elif FIT_DATA_MODE == "detected":
-    z_fit = z_det
-    m_fit = m_det
-    fit_data_label = "Detected"
+if FIT_DATA_MODE == "noised":
+    z_fit = z_noise
+    m_fit = m_noise
+    fit_data_label = "Noised"
+elif FIT_DATA_MODE == "selected":
+    z_fit = z_sel
+    m_fit = m_sel
+    fit_data_label = "Selected"
 else:
-    raise ValueError("FIT_DATA_MODE must be either 'observed' or 'detected'.")
+    raise ValueError("FIT_DATA_MODE must be either 'noised' or 'selected'.")
 
 
 # Run a fit, without accounting for selection effects
@@ -239,7 +239,7 @@ fig = corner.corner(
     show_titles=True,
     title_fmt=".3f",
 )
-fig.suptitle(f"Cosmology Posterior Corner Plot ({fit_data_label} Fit Data)", y=1.02)
+fig.suptitle(f"Cosmology Posterior Corner Plot (Fit {fit_data_label} Data)", y=1.02)
 fig.savefig(f"cosmology_corner_plot_fit-{FIT_DATA_MODE}.png", bbox_inches="tight")
 plt.close(fig)
 
