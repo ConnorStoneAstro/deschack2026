@@ -33,6 +33,8 @@ z_std = 0.05
 def main(
     savename="posterior_samples", key=jax.random.PRNGKey(43), savefigs=True, cosmo_param="wCDM"
 ):
+    if cosmo_param not in ("wCDM", "w0waCDM"):
+        raise ValueError("cosmo_param must be either 'wCDM' or 'w0waCDM'.")
     z_max = 2.0
     cosmology = cg.Cosmology()
     # In principle can use any Cosmology for fiducial simulation
