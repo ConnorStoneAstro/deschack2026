@@ -55,6 +55,8 @@ class NaiveLikelihood(ck.Module):
 
 
 def main(FIT_DATA_MODE, key=jax.random.PRNGKey(42), just_generate=False, cosmo_param="wCDM"):
+    if cosmo_param not in ("wCDM", "w0waCDM"):
+        raise ValueError("cosmo_param must be either 'wCDM' or 'w0waCDM'.")
     # Sample redshifts
     # --------------------------------------------------------------------
     key, subkey = jax.random.split(key)
