@@ -30,7 +30,11 @@ m_std = 0.1
 z_std = 0.05
 
 
-def main(savename="posterior_samples", key=jax.random.PRNGKey(43), savefigs=True):
+def main(
+    savename="posterior_samples", key=jax.random.PRNGKey(43), savefigs=True, cosmo_param="wCDM"
+):
+    if cosmo_param not in ("wCDM", "w0waCDM"):
+        raise ValueError("cosmo_param must be either 'wCDM' or 'w0waCDM'.")
     z_max = 2.0
     cosmology = cg.Cosmology()
     # In principle can use any Cosmology for fiducial simulation
@@ -85,6 +89,8 @@ def main(savename="posterior_samples", key=jax.random.PRNGKey(43), savefigs=True
     opt_cosmology = cg.Cosmology()
     opt_cosmology.Omega_m.to_dynamic()
     opt_cosmology.w0.to_dynamic()
+    if cosmo_param == "w0waCDM":
+        opt_cosmology.wa.to_dynamic()
     load_dat = np.load("simulated_dataset.npz")
     NLL = NormalizedLikelihood(
         load_dat["z_sel"], load_dat["m_sel"], load_dat["z_std"], load_dat["m_std"], opt_cosmology
@@ -94,7 +100,11 @@ def main(savename="posterior_samples", key=jax.random.PRNGKey(43), savefigs=True
     # --------------------------------------------------------------------
     if savefigs:
         OM_grid, w0_grid = np.meshgrid(np.linspace(0.1, 0.5, 50), np.linspace(-1.5, -0.5, 50))
-        params = np.column_stack([OM_grid.ravel(), w0_grid.ravel()])
+        if cosmo_param == "w0waCDM":
+            wa_grid = np.zeros_like(OM_grid)
+            params = np.column_stack([OM_grid.ravel(), w0_grid.ravel(), wa_grid.ravel()])
+        else:
+            params = np.column_stack([OM_grid.ravel(), w0_grid.ravel()])
         nll = jax.vmap(NLL.log_likelihood)(jnp.array(params))
         plt.imshow(
             nll.reshape(OM_grid.shape),
@@ -130,6 +140,7 @@ def main(savename="posterior_samples", key=jax.random.PRNGKey(43), savefigs=True
     true_params_plot = np.array(NLL.get_values())
     omega_bounds = (0.01, 1.0)
     w0_bounds = (-2.0, 0.0)
+    wa_bounds = (-3.0, 1.0)
 
     batched_log_likelihood = jax.jit(jax.vmap(NLL.log_likelihood))
 
@@ -143,20 +154,30 @@ def main(savename="posterior_samples", key=jax.random.PRNGKey(43), savefigs=True
             & (theta_batch_jax[:, 1] > w0_bounds[0])
             & (theta_batch_jax[:, 1] < w0_bounds[1])
         )
+        if cosmo_param == "w0waCDM":
+            in_bounds = (
+                in_bounds
+                & (theta_batch_jax[:, 2] > wa_bounds[0])
+                & (theta_batch_jax[:, 2] < wa_bounds[1])
+            )
         ll = batched_log_likelihood(theta_batch_jax)
         return np.where(np.asarray(in_bounds), np.asarray(ll), -np.inf)
 
     ndim = 2
+    if cosmo_param == "w0waCDM":
+        ndim = 3
     nwalkers = 8
     nsteps = 5000
     nburn = 500
-    thin = 250
+    thin = 10  # 250
 
     p0 = np.tile(true_params_plot, (nwalkers, 1)) + 1e-12 * np.random.standard_normal(
         (nwalkers, ndim)
     )
     p0[:, 0] = np.clip(p0[:, 0], omega_bounds[0] + 1e-5, omega_bounds[1] - 1e-5)
     p0[:, 1] = np.clip(p0[:, 1], w0_bounds[0] + 1e-5, w0_bounds[1] - 1e-5)
+    if cosmo_param == "w0waCDM":
+        p0[:, 2] = np.clip(p0[:, 2], wa_bounds[0] + 1e-5, wa_bounds[1] - 1e-5)
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability_batch, vectorize=True)
     sampler.run_mcmc(p0, nsteps, progress=True)
@@ -166,17 +187,21 @@ def main(savename="posterior_samples", key=jax.random.PRNGKey(43), savefigs=True
     if savefigs:
         fig = corner.corner(
             samples,
-            labels=["Omega_m", "w0"],
+            labels=["Omega_m", "w0", "wa"] if cosmo_param == "w0waCDM" else ["Omega_m", "w0"],
             truths=true_params_plot,
             show_titles=True,
             title_fmt=".3f",
         )
         fig.suptitle(f"Cosmology Posterior Corner Plot (Proper Fit Selected Data)", y=1.02)
-        fig.savefig(f"cosmology_corner_plot_proper-fit-selected-data.png", bbox_inches="tight")
+        fig.savefig(
+            f"cosmology_corner_plot_cosmo-{cosmo_param}_proper-fit-selected-data.png",
+            bbox_inches="tight",
+        )
         plt.close(fig)
 
     np.savez(f"{savename}.npz", samples=samples, true_params=true_params_plot)
 
 
 if __name__ == "__main__":
-    main()
+    main(cosmo_param="w0waCDM")
+    main(cosmo_param="wCDM")

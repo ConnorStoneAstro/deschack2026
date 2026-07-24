@@ -54,7 +54,9 @@ class NaiveLikelihood(ck.Module):
         return -self.log_likelihood()
 
 
-def main(FIT_DATA_MODE, key=jax.random.PRNGKey(42), just_generate=False):
+def main(FIT_DATA_MODE, key=jax.random.PRNGKey(42), just_generate=False, cosmo_param="wCDM"):
+    if cosmo_param not in ("wCDM", "w0waCDM"):
+        raise ValueError("cosmo_param must be either 'wCDM' or 'w0waCDM'.")
     # Sample redshifts
     # --------------------------------------------------------------------
     key, subkey = jax.random.split(key)
@@ -162,13 +164,19 @@ def main(FIT_DATA_MODE, key=jax.random.PRNGKey(42), just_generate=False):
     opt_cosmology = cg.Cosmology()
     opt_cosmology.Omega_m.to_dynamic()
     opt_cosmology.w0.to_dynamic()
+    if cosmo_param == "w0waCDM":
+        opt_cosmology.wa.to_dynamic()
     print(opt_cosmology)
     NLL = NaiveLikelihood(z_fit, m_fit, z_std, m_std, opt_cosmology)
     print(NLL.dynamic_params)
     true_params = NLL.get_values()
 
     OM_grid, w0_grid = np.meshgrid(np.linspace(0.1, 0.5, 50), np.linspace(-1.5, -0.5, 50))
-    params = np.column_stack([OM_grid.ravel(), w0_grid.ravel()])
+    if cosmo_param == "w0waCDM":
+        wa_grid = np.zeros_like(OM_grid)
+        params = np.column_stack([OM_grid.ravel(), w0_grid.ravel(), wa_grid.ravel()])
+    else:
+        params = np.column_stack([OM_grid.ravel(), w0_grid.ravel()])
     nll = jax.vmap(NLL.log_likelihood)(jnp.array(params))
     plt.imshow(
         nll.reshape(OM_grid.shape),
@@ -189,6 +197,8 @@ def main(FIT_DATA_MODE, key=jax.random.PRNGKey(42), just_generate=False):
     true_params_plot = np.array(NLL.get_values())
     omega_bounds = (0.01, 1.0)
     w0_bounds = (-2.0, 0.0)
+    if cosmo_param == "w0waCDM":
+        wa_bounds = (-3.0, 1.0)
 
     batched_log_likelihood = jax.jit(jax.vmap(NLL.log_likelihood))
 
@@ -202,10 +212,18 @@ def main(FIT_DATA_MODE, key=jax.random.PRNGKey(42), just_generate=False):
             & (theta_batch_jax[:, 1] > w0_bounds[0])
             & (theta_batch_jax[:, 1] < w0_bounds[1])
         )
+        if cosmo_param == "w0waCDM":
+            in_bounds = (
+                in_bounds
+                & (theta_batch_jax[:, 2] > wa_bounds[0])
+                & (theta_batch_jax[:, 2] < wa_bounds[1])
+            )
         ll = batched_log_likelihood(theta_batch_jax)
         return np.where(np.asarray(in_bounds), np.asarray(ll), -np.inf)
 
     ndim = 2
+    if cosmo_param == "w0waCDM":
+        ndim = 3
     nwalkers = 8
     nsteps = 5000
     nburn = 500
@@ -218,6 +236,8 @@ def main(FIT_DATA_MODE, key=jax.random.PRNGKey(42), just_generate=False):
     )
     p0[:, 0] = np.clip(p0[:, 0], omega_bounds[0] + 1e-5, omega_bounds[1] - 1e-5)
     p0[:, 1] = np.clip(p0[:, 1], w0_bounds[0] + 1e-5, w0_bounds[1] - 1e-5)
+    if cosmo_param == "w0waCDM":
+        p0[:, 2] = np.clip(p0[:, 2], wa_bounds[0] + 1e-5, wa_bounds[1] - 1e-5)
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability_batch, vectorize=True)
     sampler.run_mcmc(p0, nsteps, progress=True)
@@ -226,16 +246,21 @@ def main(FIT_DATA_MODE, key=jax.random.PRNGKey(42), just_generate=False):
 
     fig = corner.corner(
         samples,
-        labels=["Omega_m", "w0"],
+        labels=["Omega_m", "w0", "wa"] if cosmo_param == "w0waCDM" else ["Omega_m", "w0"],
         truths=true_params_plot,
         show_titles=True,
         title_fmt=".3f",
     )
     fig.suptitle(f"Cosmology Posterior Corner Plot (Naive Fit {fit_data_label} Data)", y=1.02)
-    fig.savefig(f"cosmology_corner_plot_naive-fit-{FIT_DATA_MODE}.png", bbox_inches="tight")
+    fig.savefig(
+        f"cosmology_corner_plot_naive_cosmo-{cosmo_param}-fit-{FIT_DATA_MODE}.png",
+        bbox_inches="tight",
+    )
     plt.close(fig)
 
 
 if __name__ == "__main__":
-    main("noised")
-    main("selected")
+    main("noised", cosmo_param="w0waCDM")
+    main("selected", cosmo_param="w0waCDM")
+    main("noised", cosmo_param="wCDM")
+    main("selected", cosmo_param="wCDM")
